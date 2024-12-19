@@ -5,10 +5,10 @@
     ],
     "applications": [
         {
-            "name": "klavemyapp",
+            "name": "secondapp",
             "description": "My Honest Application",
             "version": "0.0.0",
-            "rootDir": "/apps/klavemyapp"
+            "rootDir": "/apps/secondapp"
         }
     ]
 }
