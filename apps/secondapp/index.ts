@@ -531,8 +531,10 @@ export function revealTransactions(input: RevealTransactionsInput): void {
 
     const walletBalances = new Map<string, i64>();
     const fraudulentWallets = new Set<string>();
+    const transactions: Transac[] = [];
+    const walletData: string[] = [];
 
-    // Step 1: Calculate balances and identify fraudulent wallets
+    // Step 1: Use the same fraud status computation as in listAllTransactions
     const keysListHex = seTransactionTable.get("keysList") || "[]";
     const keysList: string[] = JSON.parse<string[]>(keysListHex);
 
@@ -566,32 +568,21 @@ export function revealTransactions(input: RevealTransactionsInput): void {
         const balance = walletBalances.get(walletKey)!;
 
         if (balance < 0) {
-            fraudulentWallets.add(walletKey); // Add wallet with fraud status
+            fraudulentWallets.add(walletKey);
         }
-    }
-
-    const transactions: Transac[] = [];
-    const walletData: string[] = [];
-
-    // Step 2: Collect wallet data
-    const walletKeys = walletBalances.keys();
-    for (let i = 0; i < walletKeys.length; i++) {
-        const walletKey = walletKeys[i];
-        const balance = walletBalances.get(walletKey)!;
-        const fraudStatus = balance < 0;
 
         const balanceHex: string = balance < 0
             ? `-0x${(-balance).toString(16).padStart(12, "0")}`
             : `0x${balance.toString(16).padStart(12, "0")}`;
 
-        if (fraudStatus) {
-            walletData.push(`WalletPublicKey:${walletKey}, Balance: ${balanceHex}, FraudStatus: ${fraudStatus}`);
+        if (balance < 0) {
+            walletData.push(`WalletPublicKey:${walletKey}, Balance: ${balanceHex}, FraudStatus: true`);
         } else {
-            walletData.push(`WalletPublicKey:${"*".repeat(walletKey.length)}, Balance: **************, FraudStatus: ${fraudStatus}`);
+            walletData.push(`WalletPublicKey:${"*".repeat(walletKey.length)}, Balance: **************, FraudStatus: false`);
         }
     }
 
-    // Step 3: Process transactions
+    // Step 2: Process transactions
     for (let i = 0; i < keysList.length; i++) {
         const key = keysList[i];
         const transactionData = seTransactionTable.get(key) || "[]";
