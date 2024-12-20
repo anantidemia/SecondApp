@@ -394,7 +394,8 @@ export function revealSecretKeys(): void {
 
 /**
  * @transaction
- * Obfuscate all transactions by masking sensitive fields with '*', while calculating dynamic balances.
+ * Show all transactions, revealing original data if keys match, otherwise showing obfuscated data.
+ * Additionally, lists all wallet public keys in the response.
  */
 export function revealTransactions(input: RevealTransactionsInput): void {
     const requiredKeys: string[] = ["d23c2888169c", "40610b3cf4df", "abb4a17bfbf0"];
@@ -408,20 +409,15 @@ export function revealTransactions(input: RevealTransactionsInput): void {
         return;
     }
 
-    // Check if all keys match (no closures)
-    let keysMatch = true;
+    // Validate keys
     for (let i = 0; i < requiredKeys.length; i++) {
         if (requiredKeys[i] !== input.inputKeys[i]) {
-            keysMatch = false;
-            break;
+            Notifier.sendJson<ErrorMessage>({
+                success: false,
+                message: "Incorrect keys.",
+            });
+            return;
         }
-    }
-    if (!keysMatch) {
-        Notifier.sendJson<ErrorMessage>({
-            success: false,
-            message: "Incorrect keys.",
-        });
-        return;
     }
 
     const seTransactionTable = Ledger.getTable(secureElementTransactionTable);
@@ -447,28 +443,51 @@ export function revealTransactions(input: RevealTransactionsInput): void {
         return result;
     }
 
-    // Retrieve and process keys
+    // Retrieve keys list
     const keysListHex = seTransactionTable.get("keysList") || "[]";
-    const keysList: string[] = JSON.parse<string[]>(keysListHex);
+    let keysList: string[] = [];
+
+    if (keysListHex.trim().length > 0) {
+        keysList = JSON.parse<string[]>(keysListHex);
+    }
 
     for (let i = 0; i < keysList.length; i++) {
         const key = keysList[i];
         const transactionData = seTransactionTable.get(key) || "[]";
-        const parsedTransactions: Transac[] = JSON.parse<Transac[]>(transactionData);
+        let parsedTransactions: Transac[] = [];
+
+        if (transactionData.trim().length > 0) {
+            parsedTransactions = JSON.parse<Transac[]>(transactionData);
+        }
 
         // Sort transactions by synchronizationDate
         parsedTransactions.sort((a, b) =>
-            i32(parseInt(a.synchronizationDate)) - i32(parseInt(b.synchronizationDate))
+            i32(parseInt(a.synchronizationDate || "0")) - i32(parseInt(b.synchronizationDate || "0"))
         );
 
         for (let j = 0; j < parsedTransactions.length; j++) {
             const transac = parsedTransactions[j];
+            if (
+                !transac.FromID ||
+                !transac.ToID ||
+                !transac.amount ||
+                !transac.transactionName
+            ) {
+                Notifier.sendJson<ErrorMessage>({
+                    success: false,
+                    message: `Invalid transaction data encountered for key: ${key}`,
+                });
+                return;
+            }
+
             const amount: i64 = i64(parseInt(transac.amount, 16));
             let fraudStatus = false;
 
             // Update balances and check fraud status
             if (transac.transactionName === "Fund" || transac.transactionName === "OfflinePayment") {
-                const toBalance = walletBalances.get(transac.ToID) || i64(0);
+                const toBalance = walletBalances.has(transac.ToID)
+                    ? walletBalances.get(transac.ToID)
+                    : i64(0);
                 const newToBalance = toBalance + amount;
                 walletBalances.set(transac.ToID, newToBalance);
                 if (newToBalance < 0) {
@@ -478,7 +497,9 @@ export function revealTransactions(input: RevealTransactionsInput): void {
             }
 
             if (transac.transactionName === "Defund" || transac.transactionName === "OfflinePayment") {
-                const fromBalance = walletBalances.get(transac.FromID) || i64(0);
+                const fromBalance = walletBalances.has(transac.FromID)
+                    ? walletBalances.get(transac.FromID)
+                    : i64(0);
                 const newFromBalance = fromBalance - amount;
                 walletBalances.set(transac.FromID, newFromBalance);
                 if (newFromBalance < 0) {
