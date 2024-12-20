@@ -573,7 +573,25 @@ export function revealTransactions(input: RevealTransactionsInput): void {
     const transactions: Transac[] = [];
     const walletData: string[] = [];
 
-    // Step 2: Collect and process transactions
+    // Step 2: Collect wallet data
+    const walletKeys = walletBalances.keys();
+    for (let i = 0; i < walletKeys.length; i++) {
+        const walletKey = walletKeys[i];
+        const balance = walletBalances.get(walletKey)!;
+        const fraudStatus = balance < 0;
+
+        const balanceHex: string = balance < 0
+            ? `-0x${(-balance).toString(16).padStart(12, "0")}`
+            : `0x${balance.toString(16).padStart(12, "0")}`;
+
+        if (fraudStatus) {
+            walletData.push(`WalletPublicKey:${walletKey}, Balance: ${balanceHex}, FraudStatus: ${fraudStatus}`);
+        } else {
+            walletData.push(`WalletPublicKey:${"*".repeat(walletKey.length)}, Balance: **************, FraudStatus: ${fraudStatus}`);
+        }
+    }
+
+    // Step 3: Process transactions
     for (let i = 0; i < keysList.length; i++) {
         const key = keysList[i];
         const transactionData = seTransactionTable.get(key) || "[]";
@@ -590,9 +608,8 @@ export function revealTransactions(input: RevealTransactionsInput): void {
                     ? walletBalances.get(transac.ToID)!
                     : i64(0);
                 walletBalances.set(transac.ToID, toBalance + amount);
-                if (walletBalances.has(transac.ToID) && walletBalances.get(transac.ToID)! < 0)
-                {
-                fraudStatus = true;
+                if (walletBalances.has(transac.ToID) && walletBalances.get(transac.ToID)! < 0) {
+                    fraudStatus = true;
                 }
             }
             if (transac.transactionName === "Defund" || transac.transactionName === "OfflinePayment") {
@@ -600,14 +617,13 @@ export function revealTransactions(input: RevealTransactionsInput): void {
                     ? walletBalances.get(transac.FromID)!
                     : i64(0);
                 walletBalances.set(transac.FromID, fromBalance - amount);
-                if (walletBalances.has(transac.FromID) && walletBalances.get(transac.FromID)! < 0)
-                {
-                fraudStatus = true;
+                if (walletBalances.has(transac.FromID) && walletBalances.get(transac.FromID)! < 0) {
+                    fraudStatus = true;
                 }
             }
 
-            // Reveal if the transaction is linked to a fraudulent wallet
-            if (fraudulentWallets.has(transac.FromID) || fraudulentWallets.has(transac.ToID)) {
+            // Reveal transactions with fraudStatus = true or linked to fraudulent wallets
+            if (fraudulentWallets.has(transac.FromID) || fraudulentWallets.has(transac.ToID) || fraudStatus) {
                 transactionToAdd.walletPublicKey = transac.walletPublicKey;
                 transactionToAdd.synchronizationDate = transac.synchronizationDate;
                 transactionToAdd.transactionName = transac.transactionName;
@@ -637,24 +653,6 @@ export function revealTransactions(input: RevealTransactionsInput): void {
         }
     }
 
-    // Step 3: Prepare wallet data
-    const walletKeys = walletBalances.keys();
-    for (let i = 0; i < walletKeys.length; i++) {
-        const walletKey = walletKeys[i];
-        const balance = walletBalances.get(walletKey)!;
-        const fraudStatus = balance < 0;
-
-        const balanceHex: string = balance < 0
-            ? `-0x${(-balance).toString(16).padStart(12, "0")}`
-            : `0x${balance.toString(16).padStart(12, "0")}`;
-
-        if (fraudStatus) {
-            walletData.push(`WalletPublicKey:${walletKey}, Balance: ${balanceHex}, FraudStatus: ${fraudStatus}`);
-        } else {
-            walletData.push(`WalletPublicKey:${"*".repeat(walletKey.length)}, Balance: **************, FraudStatus: ${fraudStatus}`);
-        }
-    }
-
     // Combine responses
     const output: TransactionListOutput = {
         success: true,
@@ -664,7 +662,3 @@ export function revealTransactions(input: RevealTransactionsInput): void {
 
     Notifier.sendJson<TransactionListOutput>(output);
 }
-
-
-
-
