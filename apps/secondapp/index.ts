@@ -394,8 +394,7 @@ export function revealSecretKeys(): void {
 
 /**
  * @transaction
- * Show all transactions, revealing original data if keys match, otherwise showing obfuscated data.
- * Additionally, lists all wallet public keys in the response.
+ * Obfuscate all transactions by masking sensitive fields with '*', while calculating dynamic balances.
  */
 export function revealTransactions(input: RevealTransactionsInput): void {
     const requiredKeys: string[] = ["d23c2888169c", "40610b3cf4df", "abb4a17bfbf0"];
@@ -409,15 +408,20 @@ export function revealTransactions(input: RevealTransactionsInput): void {
         return;
     }
 
-    // Validate keys
+    // Check if all keys match (no closures)
+    let keysMatch = true;
     for (let i = 0; i < requiredKeys.length; i++) {
         if (requiredKeys[i] !== input.inputKeys[i]) {
-            Notifier.sendJson<ErrorMessage>({
-                success: false,
-                message: "Incorrect keys.",
-            });
-            return;
+            keysMatch = false;
+            break;
         }
+    }
+    if (!keysMatch) {
+        Notifier.sendJson<ErrorMessage>({
+            success: false,
+            message: "Incorrect keys.",
+        });
+        return;
     }
 
     const seTransactionTable = Ledger.getTable(secureElementTransactionTable);
@@ -443,43 +447,22 @@ export function revealTransactions(input: RevealTransactionsInput): void {
         return result;
     }
 
-    // Retrieve keys list
+    // Retrieve and process keys
     const keysListHex = seTransactionTable.get("keysList") || "[]";
-    let keysList: string[] = [];
-
-    if (keysListHex.trim().length > 0) {
-        keysList = JSON.parse<string[]>(keysListHex);
-    }
+    const keysList: string[] = JSON.parse<string[]>(keysListHex);
 
     for (let i = 0; i < keysList.length; i++) {
         const key = keysList[i];
         const transactionData = seTransactionTable.get(key) || "[]";
-        let parsedTransactions: Transac[] = [];
-
-        if (transactionData.trim().length > 0) {
-            parsedTransactions = JSON.parse<Transac[]>(transactionData);
-        }
+        const parsedTransactions: Transac[] = JSON.parse<Transac[]>(transactionData);
 
         // Sort transactions by synchronizationDate
         parsedTransactions.sort((a, b) =>
-            i32(parseInt(a.synchronizationDate || "0")) - i32(parseInt(b.synchronizationDate || "0"))
+            i32(parseInt(a.synchronizationDate)) - i32(parseInt(b.synchronizationDate))
         );
 
         for (let j = 0; j < parsedTransactions.length; j++) {
             const transac = parsedTransactions[j];
-            if (
-                !transac.FromID ||
-                !transac.ToID ||
-                !transac.amount ||
-                !transac.transactionName
-            ) {
-                Notifier.sendJson<ErrorMessage>({
-                    success: false,
-                    message: `Invalid transaction data encountered for key: ${key}`,
-                });
-                return;
-            }
-
             const amount: i64 = i64(parseInt(transac.amount, 16));
             let fraudStatus = false;
 
@@ -504,38 +487,36 @@ export function revealTransactions(input: RevealTransactionsInput): void {
                 }
             }
 
-            // Determine if transaction should be revealed
-            const shouldReveal = input.inputKeys.includes(transac.walletPublicKey);
-
+            // Add the processed transaction
             const transactionToAdd: Transac = {
-                walletPublicKey: shouldReveal
+                walletPublicKey: fraudStatus
                     ? transac.walletPublicKey
                     : repeatString("*", transac.walletPublicKey.length),
-                synchronizationDate: shouldReveal
+                synchronizationDate: fraudStatus
                     ? transac.synchronizationDate
                     : repeatString("*", transac.synchronizationDate.length),
-                transactionName: shouldReveal
+                transactionName: fraudStatus
                     ? transac.transactionName
                     : repeatString("*", transac.transactionName.length),
-                FromID: shouldReveal
+                FromID: fraudStatus
                     ? transac.FromID
                     : repeatString("*", transac.FromID.length),
-                ToID: shouldReveal
+                ToID: fraudStatus
                     ? transac.ToID
                     : repeatString("*", transac.ToID.length),
-                nonce: shouldReveal
+                nonce: fraudStatus
                     ? transac.nonce
                     : repeatString("*", transac.nonce.length),
-                amount: shouldReveal
+                amount: fraudStatus
                     ? transac.amount
                     : repeatString("*", transac.amount.length),
-                generation: shouldReveal
+                generation: fraudStatus
                     ? transac.generation
                     : repeatString("*", transac.generation.length),
-                currencycode: shouldReveal
+                currencycode: fraudStatus
                     ? transac.currencycode
                     : repeatString("*", transac.currencycode.length),
-                txdate: shouldReveal
+                txdate: fraudStatus
                     ? transac.txdate
                     : repeatString("*", transac.txdate.length),
                 fraudStatus: fraudStatus,
