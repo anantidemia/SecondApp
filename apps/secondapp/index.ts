@@ -396,7 +396,6 @@ export function revealSecretKeys(): void {
  * @transaction
  * Obfuscate all transactions by masking sensitive fields with '*', while calculating dynamic balances.
  */
-
 export function revealTransactions(input: RevealTransactionsInput): void {
     const requiredKeys: string[] = ["d23c2888169c", "40610b3cf4df", "abb4a17bfbf0"];
 
