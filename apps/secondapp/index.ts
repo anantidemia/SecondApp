@@ -485,9 +485,7 @@ export function revealTransactions(input: RevealTransactionsInput): void {
 
             // Update balances and check fraud status
             if (transac.transactionName === "Fund" || transac.transactionName === "OfflinePayment") {
-                const toBalance = walletBalances.has(transac.ToID)
-                    ? walletBalances.get(transac.ToID)
-                    : i64(0);
+                const toBalance = walletBalances.get(transac.ToID) || i64(0);
                 const newToBalance = toBalance + amount;
                 walletBalances.set(transac.ToID, newToBalance);
                 if (newToBalance < 0) {
@@ -497,9 +495,7 @@ export function revealTransactions(input: RevealTransactionsInput): void {
             }
 
             if (transac.transactionName === "Defund" || transac.transactionName === "OfflinePayment") {
-                const fromBalance = walletBalances.has(transac.FromID)
-                    ? walletBalances.get(transac.FromID)
-                    : i64(0);
+                const fromBalance = walletBalances.get(transac.FromID) || i64(0);
                 const newFromBalance = fromBalance - amount;
                 walletBalances.set(transac.FromID, newFromBalance);
                 if (newFromBalance < 0) {
@@ -508,36 +504,38 @@ export function revealTransactions(input: RevealTransactionsInput): void {
                 }
             }
 
-            // Add the processed transaction
+            // Determine if transaction should be revealed
+            const shouldReveal = input.inputKeys.includes(transac.walletPublicKey);
+
             const transactionToAdd: Transac = {
-                walletPublicKey: fraudStatus
+                walletPublicKey: shouldReveal
                     ? transac.walletPublicKey
                     : repeatString("*", transac.walletPublicKey.length),
-                synchronizationDate: fraudStatus
+                synchronizationDate: shouldReveal
                     ? transac.synchronizationDate
                     : repeatString("*", transac.synchronizationDate.length),
-                transactionName: fraudStatus
+                transactionName: shouldReveal
                     ? transac.transactionName
                     : repeatString("*", transac.transactionName.length),
-                FromID: fraudStatus
+                FromID: shouldReveal
                     ? transac.FromID
                     : repeatString("*", transac.FromID.length),
-                ToID: fraudStatus
+                ToID: shouldReveal
                     ? transac.ToID
                     : repeatString("*", transac.ToID.length),
-                nonce: fraudStatus
+                nonce: shouldReveal
                     ? transac.nonce
                     : repeatString("*", transac.nonce.length),
-                amount: fraudStatus
+                amount: shouldReveal
                     ? transac.amount
                     : repeatString("*", transac.amount.length),
-                generation: fraudStatus
+                generation: shouldReveal
                     ? transac.generation
                     : repeatString("*", transac.generation.length),
-                currencycode: fraudStatus
+                currencycode: shouldReveal
                     ? transac.currencycode
                     : repeatString("*", transac.currencycode.length),
-                txdate: fraudStatus
+                txdate: shouldReveal
                     ? transac.txdate
                     : repeatString("*", transac.txdate.length),
                 fraudStatus: fraudStatus,
